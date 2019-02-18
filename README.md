@@ -29,7 +29,7 @@ WaveShare UART Fingerprint reader for use of raspberry pi
 * 25) Set/Read fingerprint capture timeout value 
 	* Range of waiting timeout value is 0-255 (0 is wait infinitely or time * 0.2s)
 
-##Process
+## Process
 
 * Add
 	* Start
