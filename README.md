@@ -1,4 +1,4 @@
-# fignerprint-reader
+# fingerprint-reader
 WaveShare UART Fingerprint reader for use of raspberry pi
 
 ## Protocol Align
