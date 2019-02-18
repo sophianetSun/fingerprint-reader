@@ -1,2 +1,2 @@
 # fignerprint-reader
-WaveShare fingerprint reader for use of raspberry pi
+WaveShare UART Fingerprint reader for use of raspberry pi
