@@ -48,9 +48,9 @@ WaveShare UART Fingerprint reader for use of raspberry pi
 			* Check Unique FP(only prohibit); Q3=ST_USER_EXIST
 			* Add FP database
 			* Q3=ST-SUCCESS
-	* Delete
-	* Delete All
-	* Upload Image and Extract eigenvalue
-		* Collect
-		* Img Process
-		* Return data with eigenvalue
+* Delete
+* Delete All
+* Upload Image and Extract eigenvalue
+	* Collect
+	* Img Process
+	* Return data with eigenvalue
