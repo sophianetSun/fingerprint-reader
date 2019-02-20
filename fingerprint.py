@@ -85,13 +85,45 @@ def fingerprint_mode(mode, repeat=True):
     else:
         raise ValueError('mode should be "set" or "read"')
 
+def add_fingerprint(id='', user_privilege=1):
+    id = id.encode()
+    if len(id) == 0:
+        import random
+        id = int(random.random()*10000).to_bytes(2, 'big')
+        id = (id[0], id[1])
+    elif len(id) == 1:
+        id = (0, id)
+    else:
+        id = (id[0], id[1])
+
+    USER_ID_HIGH, USER_ID_LOW = id
+    USER_PRIVILEGE = user_privilege
+
+    return bytes([CMD_HEAD, CMD_ADD_1, USER_ID_HIGH, USER_ID_LOW,
+              USER_PRIVILEGE, 0, CMD_ADD_1^0, CMD_TAIL])
+
 
 assert bytes([0xF5, 0x2C, 0, 0,
-              0, 0, 0x2C^0, 0xF5]) == set_dormant_state(), 'Dormant State Response Error!'
+              0, 0, 0x2C^0, 0xF5]) == set_dormant_state(), \
+    'Dormant State Response Error!'
 assert bytes([0xF5, 0x2D, 0, 0,
-              0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', True), 'Set Fingerprint add mode allow repeat'
+              0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', True), \
+    'Set Fingerprint add mode allow repeat'
 assert bytes([0xF5, 0x2D, 0, 1,
-              0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', False), 'Set Fingerprint add mode prohibit repeat'
+              0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', False), \
+    'Set Fingerprint add mode prohibit repeat'
 assert bytes([0xF5, 0x2D, 0, 0,
-              1, 0, 0x2D^0, 0xF5]) == fingerprint_mode('read'), 'Read Fingerprint add mode'
-# fingerprint_mode('rea'), 'Should be raise Exception'
+              1, 0, 0x2D^0, 0xF5]) == fingerprint_mode('read'), \
+    'Read Fingerprint add mode'
+assert bytes([0xF5, 0x01, 0, 0,
+              1, 0, 0x01^0, 0xF5]) == \
+       add_fingerprint(), \
+    'Add first Fingerprint should correct'
+
+def exceptionTest():
+    try:
+        fingerprint_mode('rea')
+    except ValueError as ve:
+        print(ve)
+
+exceptionTest()
