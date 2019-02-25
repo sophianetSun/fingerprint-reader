@@ -32,4 +32,3 @@ class TestFPProcess(unittest.TestCase):
         self.ser.write(fp.del_all_users())
         self.assertEqual(self.ser.read(8),
             [HEAD, 0x05, 0, 0, fp.ACK_SUCCESS, 0, 0x05^0, TAIL])
-    
