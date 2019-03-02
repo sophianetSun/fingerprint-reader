@@ -15,6 +15,7 @@ class FpController:
         self.ser.close()
 
     def is_valid(self, res):
+        print(res)
         assert res[0] == HEAD and res[len(res) - 1] == TAIL, 'response data start HEAD and end TAIL byte(0xF5)'
         q3 = res[4]
         if not q3 == fp.ACK_SUCCESS:
@@ -35,6 +36,7 @@ class FpController:
     def set_dormant_state(self):
         self.ser.write(fp.set_dormant_state())
         res = self.ser.read(8)
+        return res
 
     def get_fingerprint_mode(self):
         self.ser.write(fp.fingerprint_mode('read'))
@@ -137,7 +139,7 @@ class FpController:
         self.ser.write(fp.get_dsp_version())
         head = self.ser.read(8)
         if self.is_valid(head):
-            data_len = int.from_bytes(head[2:4])
+            data_len = int.from_bytes(head[2:4], 'big')
             packet = self.ser.read(data_len + 3)
             assert packet[0] == HEAD and packet[-1] == TAIL
             chk = len(packet) - 2
