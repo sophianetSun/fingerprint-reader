@@ -235,7 +235,7 @@ class FpController:
         self.ser.write(fp.all_user_id_privilege())
         head = self.ser.read(8)
         self.is_valid(head)
-        data_len = int.from_bytes(head[2:4], 'big')
+        data_len = int.from_bytes(head[2:4], 'big') + 3
         packet = self.ser.read(data_len)
         assert packet[0] == HEAD and packet[-1] == TAIL
         num = int.from_bytes(packet[1:3], 'big')
