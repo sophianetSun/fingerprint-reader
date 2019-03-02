@@ -255,7 +255,7 @@ def get_timeout():
     return bytes([CMD_HEAD, CMD_TIMEOUT, 0, 1])
 
 
-assert bytes([0xF5, 0x2C, 0, 0, 0, 0, 0x2C^0, 0xF5]) == set_dormant_state(), 'Dormant State Response Error!'
+#assert bytes([0xF5, 0x2C, 0, 0, 0, 0, 0x2C^0, 0xF5]) == set_dormant_state(), 'Dormant State Response Error!'
 assert bytes([0xF5, 0x2D, 0, 0, 0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', True), 'Set Fingerprint add mode allow repeat'
 assert bytes([0xF5, 0x2D, 0, 0x01, 0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', False), 'Set Fingerprint add mode prohibit repeat'
 assert bytes([0xF5, 0x2D, 0, 0, 0x01, 0, 0x2D^0, 0xF5]) == fingerprint_mode('read'), 'Read Fingerprint add mode'

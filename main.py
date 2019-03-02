@@ -16,11 +16,11 @@ class TestFPProcess(unittest.TestCase):
     def tearDown(self):
         self.ser.close()
 
-    def test_set_dormant(self):
-        res = self.ser.write(fp.set_dormant_state())
-        self.assertEqual(res,
-            [HEAD, 0x2C, 0, 0, 0, 0, 0x2C^0, TAIL],
-            'should dormant be set')
+    # def test_set_dormant(self):
+    #     res = self.ser.write(fp.set_dormant_state())
+    #     self.assertEqual(res,
+    #         [HEAD, 0x2C, 0, 0, 0, 0, 0x2C^0, TAIL],
+    #         'should dormant be set')
 
     def test_add_read_mode(self):
         res = self.ser.write(fp.fingerprint_mode('read'))
