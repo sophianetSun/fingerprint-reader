@@ -151,7 +151,7 @@ class FpController:
         res = self.ser.read(8)
         self.is_valid(res)
 
-    def get_compparison_level(self):
+    def get_comparison_level(self):
         self.ser.write(fp.get_comp_level())
         res = self.ser.read(8)
         self.is_valid(res)
@@ -235,10 +235,10 @@ class FpController:
         self.ser.write(fp.all_user_id_privilege())
         head = self.ser.read(8)
         self.is_valid(head)
-        data_len = int.from_bytes(head[2:4])
+        data_len = int.from_bytes(head[2:4], 'big')
         packet = self.ser.read(data_len)
         assert packet[0] == HEAD and packet[-1] == TAIL
-        num = int.from_bytes(packet[1:3])
+        num = int.from_bytes(packet[1:3], 'big')
         users_data = packet[3:-2]
         users = []
         for idx, data in range (num):
