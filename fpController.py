@@ -15,6 +15,7 @@ class FpController:
         self.ser.close()
 
     def is_valid(self, res):
+        print(res)
         assert res[0] == HEAD and res[len(res) - 1] == TAIL, 'response data start HEAD and end TAIL byte(0xF5)'
         q3 = res[4]
         if not q3 == fp.ACK_SUCCESS:
@@ -35,6 +36,7 @@ class FpController:
     def set_dormant_state(self):
         self.ser.write(fp.set_dormant_state())
         res = self.ser.read(8)
+        return res
 
     def get_fingerprint_mode(self):
         self.ser.write(fp.fingerprint_mode('read'))
@@ -137,7 +139,7 @@ class FpController:
         self.ser.write(fp.get_dsp_version())
         head = self.ser.read(8)
         if self.is_valid(head):
-            data_len = int.from_bytes(head[2:4])
+            data_len = int.from_bytes(head[2:4], 'big')
             packet = self.ser.read(data_len + 3)
             assert packet[0] == HEAD and packet[-1] == TAIL
             chk = len(packet) - 2
@@ -149,7 +151,7 @@ class FpController:
         res = self.ser.read(8)
         self.is_valid(res)
 
-    def get_compparison_level(self):
+    def get_comparison_level(self):
         self.ser.write(fp.get_comp_level())
         res = self.ser.read(8)
         self.is_valid(res)
@@ -233,10 +235,10 @@ class FpController:
         self.ser.write(fp.all_user_id_privilege())
         head = self.ser.read(8)
         self.is_valid(head)
-        data_len = int.from_bytes(head[2:4])
+        data_len = int.from_bytes(head[2:4], 'big') + 3
         packet = self.ser.read(data_len)
         assert packet[0] == HEAD and packet[-1] == TAIL
-        num = int.from_bytes(packet[1:3])
+        num = int.from_bytes(packet[1:3], 'big')
         users_data = packet[3:-2]
         users = []
         for idx, data in range (num):

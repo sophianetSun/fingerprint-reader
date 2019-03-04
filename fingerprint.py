@@ -1,6 +1,12 @@
-#! python3
-# This is WaveShare UART Fingerprint module
+#!/usr/bin/env python3
+# This is WaveShare UART Fingerprint Reader Module
 
+import serial, time, threading, sys
+
+TRUE = 1
+FALSE = 0
+
+# Basic response message definition
 ACK_SUCCESS = 0x00      # Operation successfully
 ACK_FAIL = 0x01         # Operation failed
 ACK_FULL = 0x04         # Fingerprint database is full
@@ -8,16 +14,16 @@ ACK_NO_USER = 0x05      # No such user
 ACK_USER_EXIST = 0x06   # User already exists
 ACK_FIN_EXIST = 0x07    # Fingerprint already exists
 ACK_TIMEOUT = 0x08      # Acquistion timeout
-ACK_GO_OUT = 0x0F
 
-ACK_ALL_USER = 0x00
-ACK_GUEST_USER = 0x01
-ACK_NORMAL_USER = 0x02
-ACK_MASTER_USER = 0x03
+# User privilege
 
-USER_MAX_CNT = 40
-# MAX = 1000
+ACK_HIGH_PRI = 0x01
+ACK_MID_PRI = 0x02
+ACK_LOW_PRI = 0x03
 
+USER_MAX_CNT = 4095 # Range of user number is 1 - 0xFFF
+
+# Command definition
 CMD_HEAD = 0xF5
 CMD_TAIL = 0xF5
 CMD_ADD_1 = 0x01
@@ -31,9 +37,7 @@ CMD_COMP_LEV = 0x28
 CMD_LP_MODE = 0x2C
 CMD_TIMEOUT = 0x2E
 
-CMD_FINGER_DETECTED = 0x14
-
-CMD_ACQ_VER = 0x26
+CMD_VERSION = 0x26
 
 CMD_USER_PRI = 0x0A
 CMD_COMP_ONE = 0x0B
@@ -41,14 +45,164 @@ CMD_COMP_MANY = 0x0C
 
 CMD_ALL_USR = 0x2B
 
-CMD_UP_EXT = 0x23
-CMD_ACQ_UP = 0x24
-CMD_UP_EGV = 0x31
+CMD_EXT_EGV = 0x23
+CMD_UP_IMG = 0x24
+CMD_UP_ONE_DB = 0x31
 
-CMD_DOWN_SAVE = 0x41
-CMD_DOWN_COMP = 0x42
-CMD_DOWN_COMP_N = 0x43
-CMD_DOWN_ACQ = 0x44
+CMD_DOWN_ONE_DB = 0x41
+CMD_DOWN_COMP_ONE = 0x42
+CMD_DOWN_COMP_MANY = 0x43
+CMD_DOWN_COMP = 0x44
+
+class FingerPrintReader:
+
+    def __init__(self, port='/dev/ttyS0', baudrate=19200, timeout=None):
+        self.rx_buf = []
+        self.pc_cmd_rxbuf = []
+
+        self.rLock = threading.RLock()
+        self.ser = serial.Serial(port, baudrate, timeout=timeout)
+
+    def __del__(self):
+        self.ser.close()
+
+    def tx_rx_cmd(self, cmd_buf, rx_bytes_need, timeout):
+        """
+        send a command, and wait for the response of module
+        :param cmd_buf:
+        :param rx_bytes_need:
+        :param timeout:
+        :return:
+        """
+        chksum = 0
+        tx_buf = []
+
+        tx_buf.append(CMD_HEAD)
+        for byte in cmd_buf:
+            tx_buf.append(byte)
+            chksum ^= byte
+
+        tx_buf.append(chksum)
+        tx_buf.append(CMD_TAIL)
+
+        self.ser.flushInput()
+        self.ser.write(tx_buf)
+
+        self.rx_buf = []
+        time_before = time.time()
+        time_after = time.time()
+        while time_after - time_before < timeout and len(self.rx_buf) < rx_bytes_need:
+            bytes_can_recv = self.ser.inWaiting()
+            if bytes_can_recv != 0:
+                self.rx_buf += self.ser.read(bytes_can_recv)
+            time_after = time.time()
+
+        if len(self.rx_buf) != rx_bytes_need:
+            return ACK_TIMEOUT
+        elif self.rx_buf[0] != CMD_HEAD:
+            return ACK_FAIL
+        elif self.rx_buf[rx_bytes_need - 1] != CMD_TAIL:
+            return ACK_FAIL
+        elif self.rx_buf[1] != tx_buf[1]:
+            return ACK_FAIL
+
+        chksum = 0
+        for i, b in enumerate(self.rx_buf):
+            if i == 0:
+                continue
+            elif i == 6:
+                if chksum != b:
+                    return ACK_FAIL
+            else:
+                chksum ^= b
+
+        return ACK_SUCCESS
+
+    def get_compare_level(self):
+        """
+        Get Compare Level
+        :return:
+        """
+        cmd_buf = [CMD_COMP_LEV, 0, 0, 1, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return self.rx_buf[3]
+        else:
+            return 0xFF
+
+    def set_compare_level(self, level):
+        """
+        Set Compare Level, the default value is 5, can be set to 0-9, the bigger, the stricter
+        :param level: int 0-9
+        :return: int
+        """
+        if level < 0 or level > 9:
+            level = 5
+        cmd_buf = [CMD_COMP_LEV, 0, level, 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+
+        if res == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif res == ACK_SUCCESS and self.rx_buf == ACK_SUCCESS:
+            return self.rx_buf[3]
+        else:
+            return 0xFF
+
+    def get_user_count(self):
+        """
+        Query the number of existing fingerprints
+        :return: int
+        """
+        cmd_buf = [CMD_USER_CNT, 0, 0, 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            cnt = int.from_bytes(self.rx_buf[2:4], 'big')
+            return cnt
+
+
+    def get_timeout(self):
+        """
+        Get the time that fingerprint collection wait timeout
+        :return: timeout value of 0-255 is approximately val * 0.2~0.3s
+        """
+        cmd_buf = [CMD_TIMEOUT, 0, 0, 1, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return self.rx_buf[3]
+        else:
+            return 0xFF
+
+    def add_user(self, user_id=None):
+        """
+        Register fingerprint
+        :return:
+        """
+        usr_cnt = self.get_user_count()
+        if usr_cnt >= USER_MAX_CNT:
+            return ACK_FULL
+
+
+
+    def id_to_byte(user_id=''):
+        if type(user_id) is int:
+            user_id = str(user_id)
+        uid = user_id.encode()
+
+        if len(uid) == 0:
+            import random
+            uid = int(random.random() * 4000).to_bytes(2, 'big')
+        elif len(uid) == 1:
+            uid = bytes([0, int(uid)])
+        else:
+            uid = uid[:2]
+
+        return uid[0], uid[1]
 
 
 def set_dormant_state():
@@ -255,7 +409,7 @@ def get_timeout():
     return bytes([CMD_HEAD, CMD_TIMEOUT, 0, 1])
 
 
-assert bytes([0xF5, 0x2C, 0, 0, 0, 0, 0x2C^0, 0xF5]) == set_dormant_state(), 'Dormant State Response Error!'
+#assert bytes([0xF5, 0x2C, 0, 0, 0, 0, 0x2C^0, 0xF5]) == set_dormant_state(), 'Dormant State Response Error!'
 assert bytes([0xF5, 0x2D, 0, 0, 0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', True), 'Set Fingerprint add mode allow repeat'
 assert bytes([0xF5, 0x2D, 0, 0x01, 0, 0, 0x2D^0, 0xF5]) == fingerprint_mode('set', False), 'Set Fingerprint add mode prohibit repeat'
 assert bytes([0xF5, 0x2D, 0, 0, 0x01, 0, 0x2D^0, 0xF5]) == fingerprint_mode('read'), 'Read Fingerprint add mode'
