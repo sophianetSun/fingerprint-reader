@@ -62,7 +62,7 @@ class User:
 
     def __repr__(self):
         uid = bytes([self.high, self.low]).decode()
-        pri = self.privilege
+        pri = str(self.privilege)
         return 'id: ' + uid + ', privilege: ' + pri
 
 
@@ -280,7 +280,7 @@ class FingerPrintReader:
     def compare_by_id(self, user_id):
         byte_id = self.id_to_byte(user_id)
         cmd_buf = [CMD_COMP_ONE, byte_id[0], byte_id[1], 0, 0]
-        res = self.rx_buf(cmd_buf, 8, 5)
+        res = self.tx_rx_cmd(cmd_buf, 8, 5)
         if res == ACK_TIMEOUT:
             return ACK_TIMEOUT
         elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
@@ -348,7 +348,7 @@ class FingerPrintReader:
         if header == ACK_TIMEOUT:
             return ACK_TIMEOUT
         elif header == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            data_len = int.from_bytes(header[2:4], 'big')
+            data_len = int.from_bytes(self.rx_buf[2:4], 'big')
             packet = self.ser.read(data_len + 3)
             if check_packet(packet) == ACK_SUCCESS:
                 return packet[1:-2]
