@@ -29,12 +29,12 @@ CMD_TAIL = 0xF5
 CMD_ADD_1 = 0x01
 CMD_ADD_2 = 0x02
 CMD_ADD_3 = 0x03
-CMD_MATCH = 0x0C
 CMD_DEL = 0x04
 CMD_DEL_ALL = 0x05
 CMD_USER_CNT = 0x09
 CMD_COMP_LEV = 0x28
 CMD_LP_MODE = 0x2C
+CMD_ADD_MODE = 0x2D
 CMD_TIMEOUT = 0x2E
 
 CMD_VERSION = 0x26
@@ -53,6 +53,18 @@ CMD_DOWN_ONE_DB = 0x41
 CMD_DOWN_COMP_ONE = 0x42
 CMD_DOWN_COMP_MANY = 0x43
 CMD_DOWN_COMP = 0x44
+
+class User:
+    def __init__(self, high, low, privilege):
+        self.high = high
+        self.low = low
+        self.privilege = privilege
+
+    def __repr__(self):
+        uid = bytes([self.high, self.low]).decode()
+        pri = self.privilege
+        return 'id: ' + uid + ', privilege: ' + pri
+
 
 class FingerPrintReader:
 
@@ -125,12 +137,11 @@ class FingerPrintReader:
         """
         cmd_buf = [CMD_COMP_LEV, 0, 0, 1, 0]
         res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
             return self.rx_buf[3]
         else:
-            return 0xFF
+            return ACK_FAIL
 
     def set_compare_level(self, level):
         """
@@ -143,12 +154,10 @@ class FingerPrintReader:
         cmd_buf = [CMD_COMP_LEV, 0, level, 0, 0]
         res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
 
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif res == ACK_SUCCESS and self.rx_buf == ACK_SUCCESS:
+        if res == ACK_SUCCESS and self.rx_buf == ACK_SUCCESS:
             return self.rx_buf[3]
         else:
-            return 0xFF
+            return ACK_FAIL
 
     def get_user_count(self):
         """
@@ -157,12 +166,11 @@ class FingerPrintReader:
         """
         cmd_buf = [CMD_USER_CNT, 0, 0, 0, 0]
         res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
             cnt = int.from_bytes(self.rx_buf[2:4], 'big')
             return cnt
-
+        else:
+            return ACK_FAIL
 
     def get_timeout(self):
         """
@@ -171,169 +179,198 @@ class FingerPrintReader:
         """
         cmd_buf = [CMD_TIMEOUT, 0, 0, 1, 0]
         res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return self.rx_buf[3]
+        else:
+            return ACK_FAIL
+
+    def add_user(self, user_id=None, user_pri=2):
+        """
+        Register fingerprint, 3 times attemps
+        :return:
+        """
+        user_cnt = self.get_user_count()
+        if user_cnt >= USER_MAX_CNT:
+            return ACK_FULL
+
+        if not user_id:
+            user_id = user_cnt
+
+        res = self.finger_add(user_id, user_pri, CMD_ADD_1)
+        if res == ACK_SUCCESS:
+            res = self.finger_add(user_id, user_pri, CMD_ADD_2)
+        if res == ACK_SUCCESS:
+            res = self.finger_add(user_id, user_pri, CMD_ADD_3)
+        return res
+
+    def finger_add(self, user_id, user_pri, cmd):
+        byte_id = self.id_to_byte(user_id)
+        cmd_buf = [cmd, byte_id[0], byte_id[1], user_pri, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 6)
+        if res == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif res == ACK_USER_EXIST and self.rx_buf[4] == ACK_USER_EXIST:
+            return ACK_USER_EXIST
+        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return ACK_SUCCESS
+        else:
+            return ACK_FAIL
+
+    def id_to_byte(self, user_id):
+        if type(user_id) == int:
+            return bytes(int(user_id).to_bytes(2, 'big'))
+        else:
+            if len(user_id) > 2:
+                return bytes(user_id[-2:].encode())
+            elif len(user_id) == 2:
+                return bytes(user_id.encode())
+
+    def del_specified_user(self, user_id):
+        """
+        delete specified user by id
+        :param user_id: str or int
+        :return:
+        """
+        byte_id = self.id_to_byte(user_id)
+        cmd_buf = [CMD_DEL, byte_id[0], byte_id[1], 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_SUCCESS:
+            return ACK_SUCCESS
+        else:
+            return ACK_FAIL
+
+    def clear_all_users(self):
+        """
+        Clear fingerprints
+        :return:
+        """
+        cmd_buf = [CMD_DEL_ALL, 0, 0, 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 5)
+        if res == ACK_FAIL:
+            return ACK_TIMEOUT
+        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return ACK_SUCCESS
+
+    def get_user_privilege(self, user_id):
+        """
+        Get user privilege by user_id
+        :param user_id: str or int
+        :return: int
+        """
+        byte_id = self.id_to_byte(user_id)
+        cmd_buf = [CMD_USER_PRI, byte_id[0], byte_id[1], 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_NO_USER:
+            return ACK_NO_USER
+        else:
+            return self.rx_buf[4]
+
+    def compare_many(self):
+        cmd_buf = [CMD_COMP_MANY, 0, 0, 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 5)
+
+        if res == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif res == ACK_NO_USER and self.rx_buf[4] == ACK_NO_USER:
+            return ACK_NO_USER
+        else:
+            return User(self.rx_buf[2], self.rx_buf[3], self.rx_buf[4])
+
+    def compare_by_id(self, user_id):
+        byte_id = self.id_to_byte(user_id)
+        cmd_buf = [CMD_COMP_ONE, byte_id[0], byte_id[1], 0, 0]
+        res = self.rx_buf(cmd_buf, 8, 5)
         if res == ACK_TIMEOUT:
             return ACK_TIMEOUT
         elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return ACK_SUCCESS
+        else:
+            return ACK_FAIL
+
+    def set_dormant(self):
+        """
+        fingerprint module will be sleep. for wake up send Reset signal or power on
+        :return: None
+        """
+        cmd_buf = [CMD_LP_MODE, 0, 0, 0, 0]
+        self.tx_rx_cmd(cmd_buf, 8, 0.1)
+
+    def get_add_mode(self):
+        """
+        Get fingerprint add mode
+        :return: 0 is allow repeat, 1 is prohibit repeat
+        """
+        cmd_buf = [CMD_ADD_MODE, 0, 0, 1, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
             return self.rx_buf[3]
         else:
-            return 0xFF
+            return ACK_FAIL
 
-    def add_user(self, user_id=None):
+    def set_add_mode(self, repeat=1):
         """
-        Register fingerprint
+        Set fingerprint add mode
+        :param repeat: allow repeat 0 or 1
         :return:
         """
-        usr_cnt = self.get_user_count()
-        if usr_cnt >= USER_MAX_CNT:
-            return ACK_FULL
-
-
-
-    def id_to_byte(user_id=''):
-        if type(user_id) is int:
-            user_id = str(user_id)
-        uid = user_id.encode()
-
-        if len(uid) == 0:
-            import random
-            uid = int(random.random() * 4000).to_bytes(2, 'big')
-        elif len(uid) == 1:
-            uid = bytes([0, int(uid)])
+        cmd_buf = [CMD_ADD_MODE, 0, repeat, 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return self.rx_buf[3]
         else:
-            uid = uid[:2]
+            return ACK_FAIL
 
-        return uid[0], uid[1]
+    def set_comp_level(self, level=5):
+        if 0 > level or 9 < level:
+            raise ValueError('out of argument level range, 0 <= level <= 9')
+        cmd_buf = [CMD_COMP_LEV, 0, level, 0, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return self.rx_buf[3]
+        else:
+            return ACK_FAIL
+
+    def get_comp_level(self):
+        cmd_buf = [CMD_COMP_LEV, 0, 0, 1, 0]
+        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            return self.rx_buf[3]
+        else:
+            return ACK_FAIL
+
+    def download_fp_imgs(self):
+        """
+        :return: Image binary data
+        """
+        cmd_buf = [CMD_UP_IMG, 0, 0, 0, 0]
+        header = self.tx_rx_cmd(cmd_buf, 8, 6)
+        if header == ACK_TIMEOUT:
+            return ACK_TIMEOUT
+        elif header == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
+            data_len = int.from_bytes(header[2:4], 'big')
+            packet = self.ser.read(data_len + 3)
+            if check_packet(packet) == ACK_SUCCESS:
+                return packet[1:-2]
+        else:
+            return ACK_FAIL
+
+    def download_eigenvalue(self):
+        cmd_buf = [CMD_EXT_EGV, 0, 0, 0, 0]
 
 
-def set_dormant_state():
-    """
-    fingerprint will be sleep.
-    :return: 8 bytes
-    """
-    CHK = CMD_LP_MODE^0
-    return bytes([CMD_HEAD, CMD_LP_MODE, 0, 0, 0, 0, CHK, CMD_TAIL])
 
-
-def fingerprint_mode(mode, repeat=True):
-    """
-    set finger print add mode
-    :param mode: should be 'set' or 'read'
-    :param repeat: allow repeat, same finger can add one user only, Boolean
-    :return: 8 bytes
-    """
-    cmd_add_mode = 0x2D
-    cmd_repeat = 0
-    chk = cmd_add_mode ^ 0
-
-    if not repeat:
-        cmd_repeat = 1
-
-    if mode == 'set':
-        cmd_set_mode = 0
-        return bytes([CMD_HEAD, cmd_add_mode, 0, cmd_repeat,
-                      cmd_set_mode, 0, chk, CMD_TAIL])
-    elif mode == 'read':
-        cmd_read_mode = 1
-        return bytes([CMD_HEAD, cmd_add_mode, 0, cmd_repeat,
-                      cmd_read_mode, 0, chk, CMD_TAIL])
+def check_packet(packet):
+    if packet[0] == CMD_HEAD and packet[-1] == CMD_TAIL:
+        chk = 0
+        for byte in packet[1:-2]:
+            chk ^= byte
+        if chk == packet[-2]:
+            return ACK_SUCCESS
+        else:
+            return ACK_FAIL
     else:
-        raise ValueError('mode should be "set" or "read"')
-
-
-def id_to_byte(user_id=''):
-    if type(user_id) is int:
-        user_id = str(user_id)
-    uid = user_id.encode()
-
-    if len(uid) == 0:
-        import random
-        uid = int(random.random() * 4000).to_bytes(2, 'big')
-    elif len(uid) == 1:
-        uid = bytes([0, int(uid)])
-    else:
-        uid = uid[:2]
-
-    return uid[0], uid[1]
-
-
-def add_fingerprint_first(user_id='', user_privilege=1):
-    id_high, id_low = id_to_byte(user_id)
-
-    return bytes([CMD_HEAD, CMD_ADD_1, id_high, id_low,
-                  user_privilege, 0, CMD_ADD_1^0, CMD_TAIL])
-
-
-def add_fingerprint_second(user_id='', user_privilege=1):
-    id_high, id_low = id_to_byte(user_id)
-
-    return bytes([CMD_HEAD, CMD_ADD_2, id_high, id_low,
-                  user_privilege, 0, CMD_ADD_2^0, CMD_TAIL])
-
-
-def add_fingerprint_third(user_id='', user_privilege=1):
-    id_high, id_low = id_to_byte(user_id)
-
-    return bytes([CMD_HEAD, CMD_ADD_3, id_high, id_low,
-                  user_privilege, 0, CMD_ADD_3^0, CMD_TAIL])
-
-
-def del_specified_user(user_id):
-    id_high, id_low = id_to_byte(user_id)
-
-    return bytes([CMD_HEAD, CMD_DEL, id_high, id_low,
-                  0, 0, CMD_DEL^0, CMD_TAIL])
-
-
-def del_all_users():
-    return bytes([CMD_HEAD, CMD_DEL_ALL, 0, 0,
-                  0, 0, CMD_DEL_ALL^0, CMD_TAIL])
-
-
-def get_total_users():
-    return bytes([CMD_HEAD, CMD_USER_CNT, 0, 0,
-                  0, 0, CMD_USER_CNT^0, CMD_TAIL])
-
-
-def compare_by_id(user_id):
-    id_high, id_low = id_to_byte(user_id)
-
-    return bytes([CMD_HEAD, CMD_COMP_ONE, id_high, id_low,
-                  0, 0, CMD_COMP_ONE ^ 0, CMD_TAIL])
-
-
-def compare_many():
-    return bytes([CMD_HEAD, CMD_COMP_MANY, 0, 0,
-                  0, 0, 0, CMD_COMP_MANY^0, CMD_TAIL])
-
-
-def get_user_privilege(user_id):
-    id_high, id_low = id_to_byte(user_id)
-
-    return bytes([CMD_HEAD, CMD_USER_PRI, id_high, id_low,
-                  0, 0, CMD_USER_PRI^0, CMD_TAIL])
-
-
-def get_dsp_version():
-    return bytes([CMD_HEAD, CMD_ACQ_VER, 0, 0,
-                  0, 0, CMD_ACQ_VER^0, CMD_TAIL])
-
-
-def set_comp_level(level=5):
-    if 0 > level or 9 < level:
-        raise ValueError('out of argument level range, 0 <= level <= 9')
-    return bytes([CMD_HEAD, CMD_COMP_LEV, 0, level, 0,
-                  0, 0, CMD_COMP_LEV^0, CMD_TAIL])
-
-
-def get_comp_level():
-    return bytes([CMD_HEAD, CMD_COMP_LEV, 0, 0,
-                  1, 0, CMD_COMP_LEV^0, CMD_TAIL])
-
-
-def acquire_upload_imgs():
-    return bytes([CMD_HEAD, CMD_ACQ_UP, 0, 0,
-                  0, 0, CMD_ACQ_UP^0, 0])
-
+        return ACK_FAIL
 
 def upload_extract_eigenvalue():
     return bytes([CMD_HEAD, CMD_UP_EXT, 0, 0,
