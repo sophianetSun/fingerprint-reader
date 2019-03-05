@@ -20,7 +20,7 @@ def main():
     print("  CMD3 : Fingerprint matching  ")
     print("  CMD4 : Clear fingerprints ")
 
-    thread_auto_verify = threading.Thread(target=auto_verify_finger, args=(rlck, fpreader.compare_many()))
+    thread_auto_verify = threading.Thread(target=auto_verify_finger, args=(rlck, fpreader.compare_many))
     thread_auto_verify.setDaemon(True)
     thread_auto_verify.start()
 

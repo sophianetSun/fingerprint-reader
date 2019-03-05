@@ -65,6 +65,7 @@ class User:
     def __repr__(self):
         uid = bytes([self.high, self.low]).decode()
         pri = str(self.privilege)
+        print(self.high, self.low, uid, self.privilege, pri)
         return 'id: ' + uid + ', privilege: ' + pri
 
 
@@ -273,7 +274,7 @@ class FingerPrintReader:
 
         if res == ACK_TIMEOUT:
             return ACK_TIMEOUT
-        elif res == ACK_NO_USER and self.rx_buf[4] == ACK_NO_USER:
+        elif self.rx_buf[4] == ACK_NO_USER:
             return ACK_NO_USER
         else:
             return User(self.rx_buf[2], self.rx_buf[3], self.rx_buf[4])
