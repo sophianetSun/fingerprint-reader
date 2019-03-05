@@ -36,8 +36,6 @@ CMD_LP_MODE = 0x2C
 CMD_ADD_MODE = 0x2D
 CMD_TIMEOUT = 0x2E
 
-CMD_VERSION = 0x26
-
 CMD_USER_PRI = 0x0A
 CMD_COMP_ONE = 0x0B
 CMD_COMP_MANY = 0x0C
@@ -46,6 +44,8 @@ CMD_ALL_USR = 0x2B
 
 CMD_EXT_EGV = 0x23
 CMD_UP_IMG = 0x24
+CMD_VERSION = 0x26
+
 CMD_UP_ONE_DB = 0x31
 
 CMD_DOWN_ONE_DB = 0x41
@@ -106,9 +106,7 @@ class FingerPrintReader:
         time_before = time.time()
         time_after = time.time()
         while time_after - time_before < timeout and len(self.rx_buf) < rx_bytes_need:
-            bytes_can_recv = self.ser.inWaiting()
-            if bytes_can_recv != 0:
-                self.rx_buf += self.ser.read(bytes_can_recv)
+            self.rx_buf += self.ser.read(rx_bytes_need)
             time_after = time.time()
 
         if len(self.rx_buf) != rx_bytes_need:
@@ -156,7 +154,7 @@ class FingerPrintReader:
         cmd_buf = [CMD_COMP_LEV, 0, level, 0, 0]
         res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
 
-        if res == ACK_SUCCESS and self.rx_buf == ACK_SUCCESS:
+        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
             return self.rx_buf[3]
         else:
             return ACK_FAIL
@@ -276,8 +274,10 @@ class FingerPrintReader:
             return ACK_TIMEOUT
         elif self.rx_buf[4] == ACK_NO_USER:
             return ACK_NO_USER
-        else:
+        elif self.rx_buf[4] in (1, 2, 3):
             return User(self.rx_buf[2], self.rx_buf[3], self.rx_buf[4])
+        else:
+            return ACK_FAIL
 
     def compare_by_id(self, user_id):
         byte_id = self.id_to_byte(user_id)
@@ -374,15 +374,18 @@ class FingerPrintReader:
         else:
             return ACK_FAIL
 
-    def get_moudle_version(self):
+    def get_module_version(self):
         cmd_buf = [CMD_VERSION, 0, 0, 0, 0]
         header = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        print(header)
         if header == ACK_SUCCESS:
             data_len = int.from_bytes(self.rx_buf[2:4], 'big')
             packet = self.ser.read(data_len + 3)
             if check_packet(packet) == ACK_SUCCESS:
                 version = packet[1:-2].decode()
                 return version
+            else:
+                return ACK_FAIL
         else:
             return ACK_FAIL
 
