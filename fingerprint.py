@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # This is WaveShare UART Fingerprint Reader Module
 
-import serial, time, threading, sys
-
-TRUE = 1
-FALSE = 0
+import serial
+import time
+import threading
 
 # Basic response message definition
 ACK_SUCCESS = 0x00      # Operation successfully
@@ -21,7 +20,7 @@ ACK_HIGH_PRI = 0x01
 ACK_MID_PRI = 0x02
 ACK_LOW_PRI = 0x03
 
-USER_MAX_CNT = 4095 # Range of user number is 1 - 0xFFF
+USER_MAX_CNT = 4095     # Range of user number is 1 - 0xFFF
 
 # Command definition
 CMD_HEAD = 0xF5
@@ -54,6 +53,9 @@ CMD_DOWN_COMP_ONE = 0x42
 CMD_DOWN_COMP_MANY = 0x43
 CMD_DOWN_COMP = 0x44
 
+rlck = threading.RLock()
+
+
 class User:
     def __init__(self, high, low, privilege=None):
         self.high = high
@@ -72,7 +74,6 @@ class FingerPrintReader:
         self.rx_buf = []
         self.pc_cmd_rxbuf = []
 
-        self.rLock = threading.RLock()
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
 
     def __del__(self):
@@ -359,7 +360,7 @@ class FingerPrintReader:
         cmd_buf = [CMD_EXT_EGV, 0, 0, 0, 0]
         res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
         if res == ACK_TIMEOUT:
-            return  ACK_TIMEOUT
+            return ACK_TIMEOUT
         elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
             data_len = int.from_bytes(self.rx_buf[2:4], 'big')
             packet = self.ser.read(data_len + 3)
