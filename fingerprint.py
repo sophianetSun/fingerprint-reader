@@ -268,7 +268,7 @@ class FingerPrintReader:
 
     def compare_many(self):
         cmd_buf = [CMD_COMP_MANY, 0, 0, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 5)
+        res = self.tx_rx_cmd(cmd_buf, 8, 60 * 60 * 24)
 
         if res == ACK_TIMEOUT:
             return ACK_TIMEOUT
