@@ -50,7 +50,7 @@ def analysis_command(cmd, fpr):
 
 def auto_verify_finger(lck, result):
     while True:
-        if lck.acquire():
+        if lck.acquire() == True:
             print("Waiting Finger......Please try to place the center of the fingerprint flat to sensor !")
             time.sleep(0.25)
             res = result()
