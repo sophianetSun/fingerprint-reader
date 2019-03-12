@@ -5,7 +5,8 @@ import sys
 
 
 def main():
-    port = '/dev/ttyUSB0'
+    #port = '/dev/ttyUSB0'
+    port = '/dev/cu.SLAB_USBtoUART'
     baudrate = 19200
     timeout = 0.1
 

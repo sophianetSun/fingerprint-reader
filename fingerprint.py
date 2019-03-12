@@ -16,9 +16,9 @@ ACK_TIMEOUT = 0x08      # Acquistion timeout
 
 # User privilege
 
-ACK_HIGH_PRI = 0x01
-ACK_MID_PRI = 0x02
-ACK_LOW_PRI = 0x03
+PRI_HIGH = 0x01
+PRI_MID = 0x02
+PRI_LOW = 0x03
 
 USER_MAX_CNT = 4095     # Range of user number is 1 - 0xFFF
 
@@ -63,7 +63,7 @@ class User:
         self.privilege = privilege
 
     def __repr__(self):
-        uid = bytes([self.high, self.low]).decode()
+        uid = int.from_bytes(bytes([self.high, self.low]))
         pri = str(self.privilege)
         print(self.high, self.low, uid, self.privilege, pri)
         return 'id: ' + uid + ', privilege: ' + pri
@@ -185,7 +185,7 @@ class FingerPrintReader:
         else:
             return ACK_FAIL
 
-    def add_user(self, user_id=None, user_pri=2):
+    def add_user(self, user_id=None, user_pri=PRI_MID):
         """
         Register fingerprint, 3 times attemps
         :return:
