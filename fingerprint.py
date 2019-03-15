@@ -3,7 +3,6 @@
 
 import serial
 import time
-import threading
 
 # Basic response message definition
 ACK_SUCCESS = 0x00      # Operation successfully
@@ -52,8 +51,6 @@ CMD_DOWN_ONE_DB = 0x41
 CMD_DOWN_COMP_ONE = 0x42
 CMD_DOWN_COMP_MANY = 0x43
 CMD_DOWN_COMP = 0x44
-
-rlck = threading.RLock()
 
 
 class User:

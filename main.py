@@ -5,8 +5,8 @@ import sys
 
 
 def main():
-    #port = '/dev/ttyUSB0'
-    port = '/dev/cu.SLAB_USBtoUART'
+    #port = '/dev/ttyUSB0'  # raspbian 
+    port = '/dev/cu.SLAB_USBtoUART' # MacOS Test
     baudrate = 19200
     timeout = 0.1
 
@@ -21,9 +21,10 @@ def main():
     print("  CMD3 : Fingerprint matching  ")
     print("  CMD4 : Clear fingerprints ")
 
-    thread_auto_verify = threading.Thread(target=auto_verify_finger, args=(rlck, fpreader.compare_many))
-    thread_auto_verify.setDaemon(True)
-    thread_auto_verify.start()
+    # to be fix bug
+    #thread_auto_verify = threading.Thread(target=auto_verify_finger, args=(rlck, fpreader.compare_many))
+    #thread_auto_verify.setDaemon(True)
+    #thread_auto_verify.start()
 
     while True:
         print("Plese input command :", sep='')
