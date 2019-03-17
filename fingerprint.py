@@ -3,6 +3,7 @@
 
 import serial
 import time
+from enum import Enum
 
 # Basic response message definition
 ACK_SUCCESS = 0x00      # Operation successfully
@@ -52,6 +53,22 @@ CMD_DOWN_COMP_ONE = 0x42
 CMD_DOWN_COMP_MANY = 0x43
 CMD_DOWN_COMP = 0x44
 
+
+class Response(Enum):
+    """
+    Fingerprint module response
+    """
+    SUCCESS = 0x00  # Operation successfully
+    FAIL = 0x01  # Operation failed
+    FULL = 0x04  # Fingerprint database is full
+    NO_USER = 0x05  # No such user
+    USER_EXIST = 0x06  # User already exists
+    FINGER_EXIST = 0x07  # Fingerprint already exists
+    TIMEOUT = 0x08  # Acquistion timeout
+
+
+assert Response.SUCCESS == Response.SUCCESS
+print(Response(0x00))
 
 class User:
     def __init__(self, high, low, privilege=None):
