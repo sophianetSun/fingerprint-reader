@@ -85,8 +85,8 @@ class User:
         self.eigenvalue = eigenvalue
 
     def __repr__(self):
-        uid = int.from_bytes(bytes([self.high, self.low]), 'big')
-        pri = self.privilege
+        uid = str(int.from_bytes(bytes([self.high, self.low]), 'big'))
+        pri = str(self.privilege)
         return 'Id: ' + uid + ', Privilege: ' + pri
 
 
@@ -450,12 +450,12 @@ class FingerPrintReader:
 
     def download_user_eigenvalue(self, user_id):
         id_high, id_low = text_to_byte(user_id)
-        cmd = [Command.Head, Command.UP_ONE_DB, id_high, id_low,
+        cmd = [Command.HEAD, Command.UP_ONE_DB, id_high, id_low,
                0, 0, Command.CHK, Command.TAIL]
         head = self.send_command(cmd, Command.CMD_LEN, 0.1)
         if Ack(head[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(head[2:4], 'big')
-            packet = self.ser.read(data_len)
+            packet = self.ser.read(data_len + 3)
             return receive_packet(packet, 1, -2)
         else:
             return Ack(head[4])
@@ -481,16 +481,19 @@ class FingerPrintReader:
         header = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
         if Ack(header[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(header[2:4], 'big')
-            packet = self.ser.read(data_len)
+            packet = self.ser.read(data_len + 3)
             packet = receive_packet(packet, 1, -2)
-            return get_users(packet)
+            if packet is not Ack.FAIL:
+                return get_users(packet)
+            else:
+                return Ack.FAIL
         else:
             return Ack(header[4])
 
 
 def receive_packet(packet, start, end):
-    if ((packet[0] == Command.HEAD and packet[-1] == Command.TAIL)
-            or (packet[-2] == get_chksum(packet[1:-2]))):
+    if not ((packet[0] == Command.HEAD and packet[-1] == Command.TAIL)
+            and (packet[-2] == get_chksum(packet[1:-2]))):
         return Ack.FAIL
     else:
         return packet[start:end]
@@ -514,7 +517,7 @@ def get_users(packet):
     user_num = int.from_bytes(packet[:2], 'big')
     user_packet = packet[2:]
     users = []
-    for i in user_num:
+    for i in range(user_num):
         idx = i * 3
         id_high, id_low, pri = user_packet[idx], user_packet[idx+1], user_packet[idx+2]
         user = User(id_high, id_low, pri)
