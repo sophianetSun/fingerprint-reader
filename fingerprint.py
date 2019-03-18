@@ -3,7 +3,7 @@
 
 import serial
 import time
-from enum import Enum
+from enum import Enum, IntEnum
 
 USER_MAX_CNT = 4095     # Range of user number is 1 - 0xFFF
 
@@ -17,12 +17,12 @@ class Privilege(Enum):
     LOW = 0x03
 
 
-class Command(Enum):
+class Command:
     """
     Command definition
     """
     CHK = 0
-    HEADER_LEN = 8
+    CMD_LEN = 8
 
     HEAD = 0xF5
     TAIL = 0xF5
@@ -55,7 +55,7 @@ class Command(Enum):
     DOWN_COMP = 0x44
 
 
-class Response(Enum):
+class Ack(Enum):
     """
     Fingerprint module response
     """
@@ -68,6 +68,15 @@ class Response(Enum):
     TIMEOUT = 0x08  # Acquistion timeout
 
 
+class Response:
+    def __init__(self, ack, val):
+        self.ack = ack
+        self.value = val
+
+    def __repr__(self):
+        return 'Ack: {}, Value: {}'.format(self.ack, self.value)
+
+
 class User:
     def __init__(self, high, low, privilege=None, eigenvalue=None):
         self.high = high
@@ -76,9 +85,9 @@ class User:
         self.eigenvalue = eigenvalue
 
     def __repr__(self):
-        uid = int.from_bytes(bytes([self.high, self.low]))
+        uid = int.from_bytes(bytes([self.high, self.low]), 'big')
         pri = self.privilege
-        return 'id: ' + uid + ', privilege: ' + pri
+        return 'Id: ' + uid + ', Privilege: ' + pri
 
 
 class FingerPrintReader:
@@ -99,7 +108,7 @@ class FingerPrintReader:
         :param timeout:
         :return: response bytes
         """
-        assert Command(cmd_buf[0]) == Command.HEAD and Command(cmd_buf[-1]) == Command.TAIL, \
+        assert cmd_buf[0] == Command.HEAD and cmd_buf[-1] == Command.TAIL, \
             'Request command 1st and last byte is 0xF5'
 
         cmd_buf[-2] = get_chksum(cmd_buf[1:-2])
@@ -147,12 +156,12 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.COMP_LEV, 0, 0,
                    1, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
 
-        if Response(res[4]) == Response.SUCCESS:
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response.FAIL
+            return Ack.FAIL
 
     def set_compare_level(self, level):
         """
@@ -164,12 +173,12 @@ class FingerPrintReader:
             level = 5
         cmd_buf = [Command.TAIL, Command.COMP_LEV, 0, level,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
 
-        if Response(res[4]) == Response.SUCCESS:
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response.FAIL
+            return Ack.FAIL
 
     def get_user_count(self):
         """
@@ -178,11 +187,11 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.USER_CNT, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(res[4]) == Response.SUCCESS:
-            return int.from_bytes(self.res[2:4], 'big')
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(res[4]) == Ack.SUCCESS:
+            return int.from_bytes(res[2:4], 'big')
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def get_timeout(self):
         """
@@ -191,12 +200,12 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.TIMEOUT, 0, 0,
                    1, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
 
-        if Response(res[4]) == Response.SUCCESS:
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def add_user(self, user_id=None, user_pri=Privilege.MID):
         """
@@ -207,16 +216,16 @@ class FingerPrintReader:
         res = None
         for add in adds:
             res = self.finger_add(user_id, user_pri, add)
-            if Response(res[4]) != Response.SUCCESS:
-                return Response(res[4])
+            if Ack(res[4]) != Ack.SUCCESS:
+                return Ack(res[4])
 
-        return Response(res[4])
+        return Ack(res[4])
 
     def finger_add(self, user_id, user_pri, cmd2th):
         byte_id = text_to_byte(user_id)
         cmd_buf = [Command.HEAD, cmd2th, byte_id[0], byte_id[1],
                    user_pri, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 6)
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 6)
         return res
 
     def del_specified_user(self, user_id):
@@ -229,7 +238,7 @@ class FingerPrintReader:
         cmd_buf = [Command.HEAD, Command.DEL, byte_id[0], byte_id[1],
                    0, 0, Command.CHK, Command.TAIL]
         res = self.send_command(cmd_buf, 8, 0.1)
-        return Response(res[4])
+        return Ack(res[4])
 
     def clear_all_users(self):
         """
@@ -238,8 +247,8 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.DEL_ALL, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 5)
-        return Response(res[4])
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 5)
+        return Ack(res[4])
 
     def get_user_privilege(self, user_id):
         """
@@ -251,10 +260,10 @@ class FingerPrintReader:
         cmd_buf = [Command.HEAD, Command.USER_PRI, byte_id[0], byte_id[1],
                    0, 0, Command.CHK, Command.TAIL]
         res = self.send_command(cmd_buf, 8, 0.1)
-        if Response(res[4]) == Response.NO_USER:
-            return Response[4]
-        else:
+        if res[4] in (1, 2, 3):
             return Privilege(res[4])
+        else:
+            return Ack(res[4])
 
     def compare_many(self):
         """
@@ -263,12 +272,12 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.COMP_MANY, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 6)
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 6)
 
         if res[4] in (1, 2, 3):
             return User(res[2], res[3], res[4])
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def compare_by_id(self, user_id):
         """
@@ -277,10 +286,10 @@ class FingerPrintReader:
         :return: Response
         """
         byte_id = text_to_byte(user_id)
-        cmd_buf = [Command.HEADH, Command.COMP_ONE, byte_id[0], byte_id[1],
+        cmd_buf = [Command.HEAD, Command.COMP_ONE, byte_id[0], byte_id[1],
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 5)
-        return Response(res[4])
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 5)
+        return Ack(res[4])
 
     def set_dormant(self):
         """
@@ -289,8 +298,8 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.SLEEP, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        return Response(res[4])
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        return Ack(res[4])
 
     def get_add_mode(self):
         """
@@ -299,11 +308,11 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.ADD_MODE, 0, 0,
                    1, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(res[4]) == Response.SUCCESS:
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def set_add_mode(self, repeat=1):
         """
@@ -313,11 +322,11 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.ADD_MODE, 0, repeat,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(res[4]) == Response.SUCCESS:
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def set_comp_level(self, level=5):
         """
@@ -329,11 +338,11 @@ class FingerPrintReader:
             level = 5
         cmd_buf = [Command.HEAD, Command.COMP_LEV, 0, level,
                    0, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(res[4]) == Response.SUCCESS:
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def get_comp_level(self):
         """
@@ -342,11 +351,11 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.COMP_LEV, 0, 0,
                    1, 0, Command.CHK, Command.TAIL]
-        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(res[4]) == Response.SUCCESS:
+        res = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(res[4]) == Ack.SUCCESS:
             return res[3]
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def download_fp_imgs(self):
         """
@@ -354,13 +363,13 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.UP_IMG, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        head = self.send_command(cmd_buf, Command.HEADER_LEN, 6)
-        if Response(head[4]) == Response.SUCCESS:
+        head = self.send_command(cmd_buf, Command.CMD_LEN, 6)
+        if Ack(head[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(head[2:4], 'big')
             body = self.ser.read(data_len + 3)
             return receive_packet(body, 1, -2)
         else:
-            return Response(head[4])
+            return Ack(head[4])
 
     def download_eigenvalue(self):
         """
@@ -369,13 +378,13 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.EXT_EGV, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        head = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(head[4]) == Response.SUCCESS:
+        head = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(head[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(head[2:4], 'big')
             body = self.ser.read(data_len + 3)
             return receive_packet(body, 4, -2)
         else:
-            return Response(head[4])
+            return Ack(head[4])
 
     def get_module_version(self):
         """
@@ -384,13 +393,13 @@ class FingerPrintReader:
         """
         cmd_buf = [Command.HEAD, Command.VERSION, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        head = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(head[4]) == Response.SUCCESS:
+        head = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(head[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(head[2:4], 'big')
             body = self.ser.read(data_len + 3)
             return receive_packet(body, 1, -2)
         else:
-            return Response(head[4])
+            return Ack(head[4])
 
     def up_comp_fingerprint(self, eigenval):
         """
@@ -408,7 +417,7 @@ class FingerPrintReader:
 
         res = self.send_cmd_packet(head, packet, 8)
 
-        return Response(res[4])
+        return Ack(res[4])
 
     def up_comp_by_id(self, eigenval, user_id):
         byte_len = len(eigenval).to_bytes(2, 'big')
@@ -421,7 +430,7 @@ class FingerPrintReader:
         packet[-2] = get_chksum(packet[1:-2])
         res = self.send_cmd_packet(head, packet, 8)
 
-        return Response(res[4])
+        return Ack(res[4])
 
     def up_comp_many(self, eigenval):
         byte_len = len(eigenval).to_bytes(2, 'big')
@@ -434,8 +443,8 @@ class FingerPrintReader:
 
         res = self.send_cmd_packet(header, packet, 8)
 
-        if Response(res[4]) == Response.NO_USER:
-            return Response(res[4])
+        if Ack(res[4]) == Ack.NO_USER:
+            return Ack(res[4])
         else:
             return User(res[2], res[3], res[4])
 
@@ -443,13 +452,13 @@ class FingerPrintReader:
         id_high, id_low = text_to_byte(user_id)
         cmd = [Command.Head, Command.UP_ONE_DB, id_high, id_low,
                0, 0, Command.CHK, Command.TAIL]
-        head = self.send_command(cmd, Command.HEADER_LEN, 0.1)
-        if Response(head[4]) == Response.SUCCESS:
+        head = self.send_command(cmd, Command.CMD_LEN, 0.1)
+        if Ack(head[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(head[2:4], 'big')
             packet = self.ser.read(data_len)
             return receive_packet(packet, 1, -2)
         else:
-            return Response(head[4])
+            return Ack(head[4])
 
     def add_fingerprint_by_data(self, user_id, user_pri, eigenvalue):
         id_high, id_low = text_to_byte(user_id)
@@ -461,28 +470,28 @@ class FingerPrintReader:
         cmd_packet += [Command.CHK, Command.TAIL]
         cmd_packet[-2] = get_chksum(cmd_packet[1:-2])
         res = self.send_cmd_packet(cmd_header, cmd_packet, 8)
-        if Response(res[4]) == Response.SUCCESS:
+        if Ack(res[4]) == Ack.SUCCESS:
             return User(id_high, id_low, user_pri)
         else:
-            return Response(res[4])
+            return Ack(res[4])
 
     def get_all_user_info(self):
         cmd_buf = [Command.HEAD, Command.ALL_USR, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
-        header = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
-        if Response(header[4]) == Response.SUCCESS:
+        header = self.send_command(cmd_buf, Command.CMD_LEN, 0.1)
+        if Ack(header[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(header[2:4], 'big')
             packet = self.ser.read(data_len)
             packet = receive_packet(packet, 1, -2)
             return get_users(packet)
         else:
-            return Response(header[4])
+            return Ack(header[4])
 
 
 def receive_packet(packet, start, end):
-    if ((Command(packet[0]) == Command.HEAD and Command(packet[-1]) == Command.TAIL)
+    if ((packet[0] == Command.HEAD and packet[-1] == Command.TAIL)
             or (packet[-2] == get_chksum(packet[1:-2]))):
-        return Response.FAIL
+        return Ack.FAIL
     else:
         return packet[start:end]
 
