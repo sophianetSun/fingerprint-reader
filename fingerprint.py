@@ -5,53 +5,54 @@ import serial
 import time
 from enum import Enum
 
-# Basic response message definition
-ACK_SUCCESS = 0x00      # Operation successfully
-ACK_FAIL = 0x01         # Operation failed
-ACK_FULL = 0x04         # Fingerprint database is full
-ACK_NO_USER = 0x05      # No such user
-ACK_USER_EXIST = 0x06   # User already exists
-ACK_FIN_EXIST = 0x07    # Fingerprint already exists
-ACK_TIMEOUT = 0x08      # Acquistion timeout
-
-# User privilege
-
-PRI_HIGH = 0x01
-PRI_MID = 0x02
-PRI_LOW = 0x03
-
 USER_MAX_CNT = 4095     # Range of user number is 1 - 0xFFF
 
-# Command definition
-CMD_HEAD = 0xF5
-CMD_TAIL = 0xF5
-CMD_ADD_1 = 0x01
-CMD_ADD_2 = 0x02
-CMD_ADD_3 = 0x03
-CMD_DEL = 0x04
-CMD_DEL_ALL = 0x05
-CMD_USER_CNT = 0x09
-CMD_COMP_LEV = 0x28
-CMD_LP_MODE = 0x2C
-CMD_ADD_MODE = 0x2D
-CMD_TIMEOUT = 0x2E
 
-CMD_USER_PRI = 0x0A
-CMD_COMP_ONE = 0x0B
-CMD_COMP_MANY = 0x0C
+class Privilege(Enum):
+    """
+    User privilege
+    """
+    HIGH = 0x01
+    MID = 0x02
+    LOW = 0x03
 
-CMD_ALL_USR = 0x2B
 
-CMD_EXT_EGV = 0x23
-CMD_UP_IMG = 0x24
-CMD_VERSION = 0x26
+class Command(Enum):
+    """
+    Command definition
+    """
+    CHK = 0
+    HEADER_LEN = 8
 
-CMD_UP_ONE_DB = 0x31
+    HEAD = 0xF5
+    TAIL = 0xF5
+    ADD_1 = 0x01
+    ADD_2 = 0x02
+    ADD_3 = 0x03
+    DEL = 0x04
+    DEL_ALL = 0x05
+    USER_CNT = 0x09
+    COMP_LEV = 0x28
+    SLEEP = 0x2C
+    ADD_MODE = 0x2D
+    TIMEOUT = 0x2E
 
-CMD_DOWN_ONE_DB = 0x41
-CMD_DOWN_COMP_ONE = 0x42
-CMD_DOWN_COMP_MANY = 0x43
-CMD_DOWN_COMP = 0x44
+    USER_PRI = 0x0A
+    COMP_ONE = 0x0B
+    COMP_MANY = 0x0C
+
+    ALL_USR = 0x2B
+
+    EXT_EGV = 0x23
+    UP_IMG = 0x24
+    VERSION = 0x26
+
+    UP_ONE_DB = 0x31
+
+    DOWN_ONE_DB = 0x41
+    DOWN_COMP_ONE = 0x42
+    DOWN_COMP_MANY = 0x43
+    DOWN_COMP = 0x44
 
 
 class Response(Enum):
@@ -67,24 +68,20 @@ class Response(Enum):
     TIMEOUT = 0x08  # Acquistion timeout
 
 
-assert Response.SUCCESS == Response.SUCCESS
-print(Response(0x00))
-
 class User:
-    def __init__(self, high, low, privilege=None):
+    def __init__(self, high, low, privilege=None, eigenvalue=None):
         self.high = high
         self.low = low
         self.privilege = privilege
+        self.eigenvalue = eigenvalue
 
     def __repr__(self):
         uid = int.from_bytes(bytes([self.high, self.low]))
-        pri = str(self.privilege)
-        print(self.high, self.low, uid, self.privilege, pri)
+        pri = self.privilege
         return 'id: ' + uid + ', privilege: ' + pri
 
 
 class FingerPrintReader:
-
     def __init__(self, port='/dev/ttyS0', baudrate=19200, timeout=None):
         self.rx_buf = []
         self.pc_cmd_rxbuf = []
@@ -94,68 +91,68 @@ class FingerPrintReader:
     def __del__(self):
         self.ser.close()
 
-    def tx_rx_cmd(self, cmd_buf, rx_bytes_need, timeout):
+    def send_command(self, cmd_buf, rx_bytes_need, timeout):
         """
         send a command, and wait for the response of module
         :param cmd_buf:
         :param rx_bytes_need:
         :param timeout:
-        :return:
+        :return: response bytes
         """
-        chksum = 0
-        tx_buf = []
+        assert Command(cmd_buf[0]) == Command.HEAD and Command(cmd_buf[-1]) == Command.TAIL, \
+            'Request command 1st and last byte is 0xF5'
 
-        tx_buf.append(CMD_HEAD)
-        for byte in cmd_buf:
-            tx_buf.append(byte)
-            chksum ^= byte
-
-        tx_buf.append(chksum)
-        tx_buf.append(CMD_TAIL)
+        cmd_buf[-2] = get_chksum(cmd_buf[1:-2])
 
         self.ser.flushInput()
-        self.ser.write(tx_buf)
+        self.ser.write(cmd_buf)
 
-        self.rx_buf = []
+        rx_buf = []
         time_before = time.time()
         time_after = time.time()
-        while time_after - time_before < timeout and len(self.rx_buf) < rx_bytes_need:
-            self.rx_buf += self.ser.read(rx_bytes_need)
+        while time_after - time_before < timeout and len(rx_buf) < rx_bytes_need:
+            rx_buf += self.ser.read(rx_bytes_need)
             time_after = time.time()
 
-        if len(self.rx_buf) != rx_bytes_need:
-            return ACK_TIMEOUT
-        elif self.rx_buf[0] != CMD_HEAD:
-            return ACK_FAIL
-        elif self.rx_buf[rx_bytes_need - 1] != CMD_TAIL:
-            return ACK_FAIL
-        elif self.rx_buf[1] != tx_buf[1]:
-            return ACK_FAIL
+        assert len(rx_buf) == rx_bytes_need and rx_buf[1] == cmd_buf[1], 'Response is error!'
 
-        chksum = 0
-        for i, b in enumerate(self.rx_buf):
-            if i == 0:
-                continue
-            elif i == 6:
-                if chksum != b:
-                    return ACK_FAIL
-            else:
-                chksum ^= b
+        return rx_buf
 
-        return ACK_SUCCESS
+    def send_command_response(self, cmd):
+        pass
+
+    def send_cmd_packet(self, header, packet, rx_bytes_need):
+        """
+        send header and packet bytes
+        :param header: bytes
+        :param packet: bytes
+        :param rx_bytes_need: int
+        :return: bytes
+        """
+        assert (Command(header[0]) == Command.HEAD and
+            Command(header[-1]) == Command.TAIL), 'Data header error'
+        header[-2] = get_chksum(header[1:-2])
+        self.ser.flushInput()
+        self.ser.write(header+packet)
+        rx_buf = []
+        while len(rx_buf) < rx_bytes_need:
+            rx_buf += self.ser.read(rx_bytes_need)
+
+        return rx_buf
 
     def get_compare_level(self):
         """
         Get Compare Level
-        :return:
+        :return: int level value (1 - 9) default 5
         """
-        cmd_buf = [CMD_COMP_LEV, 0, 0, 1, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        cmd_buf = [Command.HEAD, Command.COMP_LEV, 0, 0,
+                   1, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
 
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response.FAIL
 
     def set_compare_level(self, level):
         """
@@ -165,371 +162,352 @@ class FingerPrintReader:
         """
         if level < 0 or level > 9:
             level = 5
-        cmd_buf = [CMD_COMP_LEV, 0, level, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        cmd_buf = [Command.TAIL, Command.COMP_LEV, 0, level,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
 
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response.FAIL
 
     def get_user_count(self):
         """
         Query the number of existing fingerprints
-        :return: int
+        :return: int user count number
         """
-        cmd_buf = [CMD_USER_CNT, 0, 0, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            cnt = int.from_bytes(self.rx_buf[2:4], 'big')
-            return cnt
+        cmd_buf = [Command.HEAD, Command.USER_CNT, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(res[4]) == Response.SUCCESS:
+            return int.from_bytes(self.res[2:4], 'big')
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def get_timeout(self):
         """
         Get the time that fingerprint collection wait timeout
         :return: timeout value of 0-255 is approximately val * 0.2~0.3s
         """
-        cmd_buf = [CMD_TIMEOUT, 0, 0, 1, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        cmd_buf = [Command.HEAD, Command.TIMEOUT, 0, 0,
+                   1, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
 
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
-    def add_user(self, user_id=None, user_pri=PRI_MID):
+    def add_user(self, user_id=None, user_pri=Privilege.MID):
         """
         Register fingerprint, 3 times attemps
-        :return:
+        :return: Response
         """
-        user_cnt = self.get_user_count()
-        if user_cnt >= USER_MAX_CNT:
-            return ACK_FULL
+        adds = [Command.ADD_1, Command.ADD_2, Command.ADD_3]
+        res = None
+        for add in adds:
+            res = self.finger_add(user_id, user_pri, add)
+            if Response(res[4]) != Response.SUCCESS:
+                return Response(res[4])
 
-        if not user_id:
-            user_id = user_cnt
+        return Response(res[4])
 
-        res = self.finger_add(user_id, user_pri, CMD_ADD_1)
-        if res == ACK_SUCCESS:
-            res = self.finger_add(user_id, user_pri, CMD_ADD_2)
-        if res == ACK_SUCCESS:
-            res = self.finger_add(user_id, user_pri, CMD_ADD_3)
+    def finger_add(self, user_id, user_pri, cmd2th):
+        byte_id = text_to_byte(user_id)
+        cmd_buf = [Command.HEAD, cmd2th, byte_id[0], byte_id[1],
+                   user_pri, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 6)
         return res
-
-    def finger_add(self, user_id, user_pri, cmd):
-        byte_id = self.id_to_byte(user_id)
-        cmd_buf = [cmd, byte_id[0], byte_id[1], user_pri, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 6)
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif res == ACK_USER_EXIST and self.rx_buf[4] == ACK_USER_EXIST:
-            return ACK_USER_EXIST
-        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return ACK_SUCCESS
-        else:
-            return ACK_FAIL
-
-    def id_to_byte(self, user_id):
-        if type(user_id) == int:
-            return bytes(int(user_id).to_bytes(2, 'big'))
-        else:
-            if len(user_id) > 2:
-                return bytes(user_id[-2:].encode())
-            elif len(user_id) == 2:
-                return bytes(user_id.encode())
 
     def del_specified_user(self, user_id):
         """
         delete specified user by id
         :param user_id: str or int
-        :return:
+        :return: Response result
         """
-        byte_id = self.id_to_byte(user_id)
-        cmd_buf = [CMD_DEL, byte_id[0], byte_id[1], 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_SUCCESS:
-            return ACK_SUCCESS
-        else:
-            return ACK_FAIL
+        byte_id = text_to_byte(user_id)
+        cmd_buf = [Command.HEAD, Command.DEL, byte_id[0], byte_id[1],
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, 8, 0.1)
+        return Response(res[4])
 
     def clear_all_users(self):
         """
         Clear fingerprints
-        :return:
+        :return: Response Result
         """
-        cmd_buf = [CMD_DEL_ALL, 0, 0, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 5)
-        if res == ACK_FAIL:
-            return ACK_TIMEOUT
-        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return ACK_SUCCESS
+        cmd_buf = [Command.HEAD, Command.DEL_ALL, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 5)
+        return Response(res[4])
 
     def get_user_privilege(self, user_id):
         """
         Get user privilege by user_id
         :param user_id: str or int
-        :return: int
+        :return: privilege or Response
         """
-        byte_id = self.id_to_byte(user_id)
-        cmd_buf = [CMD_USER_PRI, byte_id[0], byte_id[1], 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_NO_USER:
-            return ACK_NO_USER
+        byte_id = text_to_byte(user_id)
+        cmd_buf = [Command.HEAD, Command.USER_PRI, byte_id[0], byte_id[1],
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, 8, 0.1)
+        if Response(res[4]) == Response.NO_USER:
+            return Response[4]
         else:
-            return self.rx_buf[4]
+            return Privilege(res[4])
 
     def compare_many(self):
-        cmd_buf = [CMD_COMP_MANY, 0, 0, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 6)
+        """
+        normal authroize user fingerprint
+        :return: User Info or Response
+        """
+        cmd_buf = [Command.HEAD, Command.COMP_MANY, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 6)
 
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif self.rx_buf[4] == ACK_NO_USER:
-            return ACK_NO_USER
-        elif self.rx_buf[4] in (1, 2, 3):
-            return User(self.rx_buf[2], self.rx_buf[3], self.rx_buf[4])
+        if res[4] in (1, 2, 3):
+            return User(res[2], res[3], res[4])
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def compare_by_id(self, user_id):
-        byte_id = self.id_to_byte(user_id)
-        cmd_buf = [CMD_COMP_ONE, byte_id[0], byte_id[1], 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 5)
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return ACK_SUCCESS
-        else:
-            return ACK_FAIL
+        """
+        authorize specified user
+        :param user_id: int or str
+        :return: Response
+        """
+        byte_id = text_to_byte(user_id)
+        cmd_buf = [Command.HEADH, Command.COMP_ONE, byte_id[0], byte_id[1],
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 5)
+        return Response(res[4])
 
     def set_dormant(self):
         """
         fingerprint module will be sleep. for wake up send Reset signal or power on
-        :return: None
+        :return: Response
         """
-        cmd_buf = [CMD_LP_MODE, 0, 0, 0, 0]
-        self.tx_rx_cmd(cmd_buf, 8, 0.1)
+        cmd_buf = [Command.HEAD, Command.SLEEP, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        return Response(res[4])
 
     def get_add_mode(self):
         """
         Get fingerprint add mode
-        :return: 0 is allow repeat, 1 is prohibit repeat
+        :return: 0 is allow repeat, 1 is prohibit repeat or Response
         """
-        cmd_buf = [CMD_ADD_MODE, 0, 0, 1, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+        cmd_buf = [Command.HEAD, Command.ADD_MODE, 0, 0,
+                   1, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def set_add_mode(self, repeat=1):
         """
         Set fingerprint add mode
-        :param repeat: allow repeat 0 or 1
-        :return:
+        :param repeat: allow repeat is 0 or prohibit is 1
+        :return: Response
         """
-        cmd_buf = [CMD_ADD_MODE, 0, repeat, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+        cmd_buf = [Command.HEAD, Command.ADD_MODE, 0, repeat,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def set_comp_level(self, level=5):
+        """
+        set comparison level 0 - 9
+        :param level: int
+        :return: comparison value or Response
+        """
         if 0 > level or 9 < level:
-            raise ValueError('out of argument level range, 0 <= level <= 9')
-        cmd_buf = [CMD_COMP_LEV, 0, level, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+            level = 5
+        cmd_buf = [Command.HEAD, Command.COMP_LEV, 0, level,
+                   0, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def get_comp_level(self):
-        cmd_buf = [CMD_COMP_LEV, 0, 0, 1, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            return self.rx_buf[3]
+        """
+        get comparison value 0 - 9
+        :return: int or Response
+        """
+        cmd_buf = [Command.HEAD, Command.COMP_LEV, 0, 0,
+                   1, 0, Command.CHK, Command.TAIL]
+        res = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(res[4]) == Response.SUCCESS:
+            return res[3]
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def download_fp_imgs(self):
         """
-        :return: Image binary data
+        :return: Image binary data or Response
         """
-        cmd_buf = [CMD_UP_IMG, 0, 0, 0, 0]
-        header = self.tx_rx_cmd(cmd_buf, 8, 6)
-        if header == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif header == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            data_len = int.from_bytes(self.rx_buf[2:4], 'big')
-            packet = self.ser.read(data_len + 3)
-            if check_packet(packet) == ACK_SUCCESS:
-                return packet[1:-2]
+        cmd_buf = [Command.HEAD, Command.UP_IMG, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        head = self.send_command(cmd_buf, Command.HEADER_LEN, 6)
+        if Response(head[4]) == Response.SUCCESS:
+            data_len = int.from_bytes(head[2:4], 'big')
+            body = self.ser.read(data_len + 3)
+            return receive_packet(body, 1, -2)
         else:
-            return ACK_FAIL
+            return Response(head[4])
 
     def download_eigenvalue(self):
-        cmd_buf = [CMD_EXT_EGV, 0, 0, 0, 0]
-        res = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if res == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        elif res == ACK_SUCCESS and self.rx_buf[4] == ACK_SUCCESS:
-            data_len = int.from_bytes(self.rx_buf[2:4], 'big')
-            packet = self.ser.read(data_len + 3)
-            if check_packet(packet) == ACK_SUCCESS:
-                eigenvalues = packet[4:-2]
-                return eigenvalues
-            else:
-                return ACK_FAIL
-
+        """
+        read fingerprint eigenvalue
+        :return: binary or Response
+        """
+        cmd_buf = [Command.HEAD, Command.EXT_EGV, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        head = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(head[4]) == Response.SUCCESS:
+            data_len = int.from_bytes(head[2:4], 'big')
+            body = self.ser.read(data_len + 3)
+            return receive_packet(body, 4, -2)
         else:
-            return ACK_FAIL
+            return Response(head[4])
 
     def get_module_version(self):
-        cmd_buf = [CMD_VERSION, 0, 0, 0, 0]
-        header = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        print(header)
-        if header == ACK_SUCCESS:
-            data_len = int.from_bytes(self.rx_buf[2:4], 'big')
-            packet = self.ser.read(data_len + 3)
-            if check_packet(packet) == ACK_SUCCESS:
-                version = packet[1:-2].decode()
-                return version
-            else:
-                return ACK_FAIL
+        """
+        get module version data
+        :return: version str or Response
+        """
+        cmd_buf = [Command.HEAD, Command.VERSION, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        head = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(head[4]) == Response.SUCCESS:
+            data_len = int.from_bytes(head[2:4], 'big')
+            body = self.ser.read(data_len + 3)
+            return receive_packet(body, 1, -2)
         else:
-            return ACK_FAIL
+            return Response(head[4])
 
     def up_comp_fingerprint(self, eigenval):
         """
         module download eigenvalues and comparison
         :param eigenval: binary data
-        :return:
+        :return: Response
         """
         byte_len = len(eigenval).to_bytes(2, 'big')
-        cmd_header = [CMD_DOWN_COMP, byte_len[0], byte_len[1], 0, 0]
-        self.tx_rx_cmd(cmd_header, 8, 0.1)
-        packet = bytes([CMD_HEAD, 0, 0, 0]) + eigenval
-        chk = get_chksum(packet[1:])
-        packet += bytes([chk, CMD_TAIL])
+        head = bytes([Command.HEAD, Command.DOWN_COMP, byte_len[0], byte_len[1],
+                          0, 0, Command.CHK, Command.TAIL])
+        packet = bytes([Command.HEAD, 0, 0, 0])
+        packet += eigenval
+        packet += bytes([Command.CHK, Command.TAIL])
+        packet[-2] = get_chksum(packet[1:-2])
 
-        res = self.ser.write(packet)
-        if res[4] == ACK_SUCCESS:
-            return ACK_SUCCESS
-        elif res[4] == ACK_TIMEOUT:
-            return ACK_TIMEOUT
-        else:
-            return ACK_FAIL
+        res = self.send_cmd_packet(head, packet, 8)
+
+        return Response(res[4])
 
     def up_comp_by_id(self, eigenval, user_id):
-        byte_len = int(len(eigenval)).to_bytes(2, 'big')
-        header_buf = [CMD_HEAD, CMD_DOWN_COMP_ONE, byte_len[0], byte_len[1], 0, 0]
-        chk = get_chksum(header_buf[1:])
-        header_buf.append(chk)
-        header_buf.append(CMD_TAIL)
-        self.ser.write(header_buf)
-        byte_id = self.id_to_byte(user_id)
-        packet_buf = bytes([CMD_HEAD, byte_id[0], byte_id[1], 0]) + eigenval
-        chk = get_chksum(packet_buf[1:])
-        packet_buf += bytes([chk, CMD_TAIL])
-        self.ser.write(packet_buf)
-        res = self.ser.read(8)
-        if res[4] == ACK_SUCCESS:
-            return ACK_SUCCESS
-        else:
-            return ACK_FAIL
+        byte_len = len(eigenval).to_bytes(2, 'big')
+        head = [Command.HEAD, Command.DOWN_COMP_ONE, byte_len[0], byte_len[1],
+                    0, 0, Command.CHK, Command.TAIL]
+        byte_id = text_to_byte(user_id)
+        packet = bytes([Command.HEAD, byte_id[0], byte_id[1], 0])
+        packet += eigenval
+        packet += bytes([Command.CHK, Command.TAIL])
+        packet[-2] = get_chksum(packet[1:-2])
+        res = self.send_cmd_packet(head, packet, 8)
+
+        return Response(res[4])
 
     def up_comp_many(self, eigenval):
-        byte_len = int(len(eigenval)).to_bytes(2, 'big')
-        cmd_header = [CMD_HEAD, CMD_DOWN_COMP_MANY, byte_len[0], byte_len[1], 0, 0]
-        chk = get_chksum(cmd_header[1:])
-        cmd_header += [chk, CMD_TAIL]
-        self.ser.write(cmd_header)
-        packet_buf = bytes([CMD_HEAD, 0, 0, 0]) + eigenval
-        chk = get_chksum(packet_buf[1:])
-        packet_buf += bytes([chk, CMD_TAIL])
-        self.ser.write(packet_buf)
-        res = self.ser.read(8)
-        if res[4] == ACK_NO_USER:
-            return ACK_NO_USER
+        byte_len = len(eigenval).to_bytes(2, 'big')
+        header = [Command.HEAD, Command.DOWN_COMP_MANY, byte_len[0], byte_len[1],
+                      0, 0, Command.CHK, Command.TAIL]
+        packet = [Command.HEAD, 0, 0, 0]
+        packet += eigenval
+        packet += [Command.CHK, Command.TAIL]
+        packet[-2] = get_chksum(packet[1:-2])
+
+        res = self.send_cmd_packet(header, packet, 8)
+
+        if Response(res[4]) == Response.NO_USER:
+            return Response(res[4])
         else:
             return User(res[2], res[3], res[4])
 
-    def down_db_by_id(self, user_id):
-        byte_id = self.id_to_byte(user_id)
-        cmd_buf = [CMD_HEAD, CMD_UP_ONE_DB, byte_id[0], byte_id[1], 0, 0]
-        chk = get_chksum(cmd_buf[1:])
-        cmd_buf += [chk, CMD_TAIL]
-        self.ser.write(cmd_buf)
-        header = self.ser.read(8)
-        if header[4] == ACK_SUCCESS:
-            data_len = int.from_bytes(header[2:4], 'big')
-            res = self.ser.read(data_len + 3)
-            user = User(res[1], res[2], res[3])
-            user.eigenvalue = res[4:-2]
-            return user
-        elif header[4] == ACK_NO_USER:
-            return ACK_NO_USER
+    def download_user_eigenvalue(self, user_id):
+        id_high, id_low = text_to_byte(user_id)
+        cmd = [Command.Head, Command.UP_ONE_DB, id_high, id_low,
+               0, 0, Command.CHK, Command.TAIL]
+        head = self.send_command(cmd, Command.HEADER_LEN, 0.1)
+        if Response(head[4]) == Response.SUCCESS:
+            data_len = int.from_bytes(head[2:4], 'big')
+            packet = self.ser.read(data_len)
+            return receive_packet(packet, 1, -2)
         else:
-            return ACK_FAIL
+            return Response(head[4])
 
-    def up_eigen_save_by_id(self, user_id, eigenval):
-        byte_len = int(len(eigenval)).to_bytes(2, 'big')
-        header_buf = [CMD_HEAD, CMD_DOWN_ONE_DB, byte_len[0], byte_len[1], 0]
-        chk = get_chksum(header_buf[1:])
-        header_buf += [chk, CMD_TAIL]
-        self.ser.write(header_buf)
-        byte_id = self.id_to_byte(user_id)
-        packet = bytes([CMD_HEAD, byte_id[0], byte_id[1], 2]) + eigenval
-        chk = get_chksum(packet[1:])
-        packet += ([chk, CMD_TAIL])
-        self.ser.write(packet)
-        res = self.ser.read(8)
-        if res[4] == ACK_SUCCESS:
-            return User(res[2], res[3])
+    def add_fingerprint_by_data(self, user_id, user_pri, eigenvalue):
+        id_high, id_low = text_to_byte(user_id)
+        high_len, low_len = int.to_bytes(len(eigenvalue), 2, 'big')
+        cmd_header = [Command.HEAD, Command.DOWN_ONE_DB, high_len, low_len,
+                      0, 0, Command.CHK, Command.TAIL]
+        cmd_packet = [Command.HEAD, id_high, id_low, user_pri]
+        cmd_packet += eigenvalue
+        cmd_packet += [Command.CHK, Command.TAIL]
+        cmd_packet[-2] = get_chksum(cmd_packet[1:-2])
+        res = self.send_cmd_packet(cmd_header, cmd_packet, 8)
+        if Response(res[4]) == Response.SUCCESS:
+            return User(id_high, id_low, user_pri)
         else:
-            return ACK_FAIL
+            return Response(res[4])
 
     def get_all_user_info(self):
-        cmd_buf = [CMD_ALL_USR, 0, 0, 0, 0]
-        header = self.tx_rx_cmd(cmd_buf, 8, 0.1)
-        if header == ACK_SUCCESS:
-            data_len = int.from_bytes(self.rx_buf[2:4], 'big')
-            packet = self.ser.read(data_len + 3)
-            if check_packet(packet) == ACK_SUCCESS:
-                user_num = int.from_bytes(packet[2:4], 'big')
-                users = []
-                for i in range(user_num):
-                    idx = i * 3
-                    high = packet[idx]
-                    low = packet[idx + 1]
-                    pri = packet[idx + 2]
-                    users.append(User(high, low, pri))
-                return users
-            else:
-                return ACK_FAIL
+        cmd_buf = [Command.HEAD, Command.ALL_USR, 0, 0,
+                   0, 0, Command.CHK, Command.TAIL]
+        header = self.send_command(cmd_buf, Command.HEADER_LEN, 0.1)
+        if Response(header[4]) == Response.SUCCESS:
+            data_len = int.from_bytes(header[2:4], 'big')
+            packet = self.ser.read(data_len)
+            packet = receive_packet(packet, 1, -2)
+            return get_users(packet)
         else:
-            return ACK_FAIL
+            return Response(header[4])
 
 
-def check_packet(packet):
-    if packet[0] == CMD_HEAD and packet[-1] == CMD_TAIL:
-        chk = 0
-        for byte in packet[1:-2]:
-            chk ^= byte
-        if chk == packet[-2]:
-            return ACK_SUCCESS
-        else:
-            return ACK_FAIL
+def receive_packet(packet, start, end):
+    if ((Command(packet[0]) == Command.HEAD and Command(packet[-1]) == Command.TAIL)
+            or (packet[-2] == get_chksum(packet[1:-2]))):
+        return Response.FAIL
     else:
-        return ACK_FAIL
+        return packet[start:end]
 
 
 def get_chksum(data):
     chk = 0
-    for byte in data:
-        chk ^= byte
+    for b in data:
+        chk ^= b
     return chk
+
+
+def text_to_byte(user_id):
+    if type(user_id) == int:
+        return bytes(int(user_id).to_bytes(2, 'big'))
+    else:
+        return bytes(user_id[:2].encode())
+
+
+def get_users(packet):
+    user_num = int.from_bytes(packet[:2], 'big')
+    user_packet = packet[2:]
+    users = []
+    for i in user_num:
+        idx = i * 3
+        id_high, id_low, pri = user_packet[idx], user_packet[idx+1], user_packet[idx+2]
+        user = User(id_high, id_low, pri)
+        users.append(user)
+    return users
