@@ -3,7 +3,7 @@
 
 import serial
 import time
-from enum import Enum, IntEnum
+from enum import Enum
 
 USER_MAX_CNT = 4095     # Range of user number is 1 - 0xFFF
 
@@ -69,7 +69,7 @@ class Ack(Enum):
 
 
 class Response:
-    def __init__(self, ack, val):
+    def __init__(self, ack, val=None):
         self.ack = ack
         self.value = val
 
@@ -79,22 +79,16 @@ class Response:
 
 class User:
     def __init__(self, high, low, privilege=None, eigenvalue=None):
-        self.high = high
-        self.low = low
+        self.id = int.from_bytes([high, low], 'big')
         self.privilege = privilege
         self.eigenvalue = eigenvalue
 
     def __repr__(self):
-        uid = str(int.from_bytes(bytes([self.high, self.low]), 'big'))
-        pri = str(self.privilege)
-        return 'Id: ' + uid + ', Privilege: ' + pri
+        return 'Id: {}, Privilege: {}'.format(self.id, self.privilege)
 
 
 class FingerPrintReader:
     def __init__(self, port='/dev/ttyS0', baudrate=19200, timeout=None):
-        self.rx_buf = []
-        self.pc_cmd_rxbuf = []
-
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
 
     def __del__(self):
@@ -128,7 +122,21 @@ class FingerPrintReader:
         return rx_buf
 
     def send_command_response(self, cmd):
-        pass
+        assert cmd[0] == Command.HEAD and cmd[-1] == Command.TAIL
+        cmd = calc_chksum(cmd)
+        self.ser.flushInput()
+        self.ser.write(cmd)
+        rx_buf = []
+        rx_buf += self.ser.read(8)
+        if self.ser.in_waiting > 0 and Ack(rx_buf[4]) == Ack.SUCCESS :
+            data_len = int.from_bytes(rx_buf[2:4], 'big')
+            packet_buf = self.ser.read(data_len + 3)
+            assert packet_buf[-2] == get_chksum(packet_buf[1:-2])
+            return Response(Ack.SUCCESS, packet_buf)
+        elif Ack(rx_buf[4]) == Ack.SUCCESS or rx_buf[4] in (1, 2, 3):
+            return Response(Ack.SUCCESS, rx_buf)
+        else:
+            return Response(Ack(rx_buf[4]))
 
     def send_cmd_packet(self, header, packet, rx_bytes_need):
         """
@@ -523,3 +531,13 @@ def get_users(packet):
         user = User(id_high, id_low, pri)
         users.append(user)
     return users
+
+
+def calc_chksum(data):
+    """
+    calculate checksum data
+    :param data: bytes
+    :return: bytes
+    """
+    data[-2] = get_chksum(data[1:-2])
+    return data
