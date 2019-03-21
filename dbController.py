@@ -1,6 +1,7 @@
 import sqlite3
 import datetime
 
+
 class DBController:
     def __init__(self, db_file):
         self.conn = sqlite3.connect(db_file)
@@ -82,20 +83,19 @@ class DBController:
         return result
 
 
-
-con = DBController(':memory:')
-assert type(con) == DBController
-con.set_up()
-assert len(con.get_workrecord()) == 0, 'query should be empty'
-assert con.finger_count() < 4095, "module could be saved fingerprints not exceed maximum"
-con.add_finger('kim sun woo')
-assert con.highest_fpid() == 1 and len(con.get_fingers()) == 1, 'db add one finger'
-assert con.get_fingers('sun woo')[0][1] == 'kim sun woo', 'should query correct'
-assert con.find_finger(1) == 'kim sun woo', 'find username by fingerprint id'
-print (con.find_finger(1))
-assert con.record('kim sun woo') == 1, 'attendance'
-print(con.get_workrecord())
-assert con.del_by_id(1) == 1, 'delete id result be 1'
-print(con.add_finger('kim sun woo'), con.add_finger('kim sun woo'))
-assert con.del_by_user('kim sun woo') == 2, 'del all by username'
-
+def test():
+    con = DBController(':memory:')
+    assert type(con) == DBController
+    con.set_up()
+    assert len(con.get_workrecord()) == 0, 'query should be empty'
+    assert con.finger_count() < 4095, "module could be saved fingerprints not exceed maximum"
+    con.add_finger('kim sun woo')
+    assert con.highest_fpid() == 1 and len(con.get_fingers()) == 1, 'db add one finger'
+    assert con.get_fingers('sun woo')[0][1] == 'kim sun woo', 'should query correct'
+    assert con.find_finger(1) == 'kim sun woo', 'find username by fingerprint id'
+    print (con.find_finger(1))
+    assert con.record('kim sun woo') == 1, 'attendance'
+    print(con.get_workrecord())
+    assert con.del_by_id(1) == 1, 'delete id result be 1'
+    print(con.add_finger('kim sun woo'), con.add_finger('kim sun woo'))
+    assert con.del_by_user('kim sun woo') == 2, 'del all by username'
