@@ -94,33 +94,6 @@ class FingerPrintReader:
     def __del__(self):
         self.ser.close()
 
-    def send_command(self, cmd_buf, rx_bytes_need, timeout):
-        """
-        send a command, and wait for the response of module
-        :param cmd_buf:
-        :param rx_bytes_need:
-        :param timeout:
-        :return: response bytes
-        """
-        assert cmd_buf[0] == Command.HEAD and cmd_buf[-1] == Command.TAIL, \
-            'Request command 1st and last byte is 0xF5'
-
-        cmd_buf[-2] = get_chksum(cmd_buf[1:-2])
-
-        self.ser.flushInput()
-        self.ser.write(cmd_buf)
-
-        rx_buf = []
-        time_before = time.time()
-        time_after = time.time()
-        while time_after - time_before < timeout and len(rx_buf) < rx_bytes_need:
-            rx_buf += self.ser.read(rx_bytes_need)
-            time_after = time.time()
-
-        assert len(rx_buf) == rx_bytes_need and rx_buf[1] == cmd_buf[1], 'Response is error!'
-
-        return rx_buf
-
     def read_reader(self, bytes_need, timeout):
         time_before = time.time()
         time_after = time.time()
@@ -236,6 +209,13 @@ class FingerPrintReader:
         return res
 
     def finger_add(self, user_id, user_pri, cmd2th):
+        """
+        subroutine of add_user method
+        :param user_id: number use for user identification
+        :param user_pri: user privilege in 1, 2, 3. high, mid, low
+        :param cmd2th: command byte
+        :return: Response of command
+        """
         byte_id = text_to_byte(user_id)
         cmd_buf = [Command.HEAD, cmd2th, byte_id[0], byte_id[1],
                    user_pri, 0, Command.CHK, Command.TAIL]
@@ -396,6 +376,12 @@ class FingerPrintReader:
         return res
 
     def up_comp_by_id(self, eigenval, user_id):
+        """
+        Module download fingerprint eigen value and compare by user id
+        :param eigenval: binary data
+        :param user_id: number of user identification
+        :return: Response
+        """
         byte_len = len(eigenval).to_bytes(2, 'big')
         head = [Command.HEAD, Command.DOWN_COMP_ONE, byte_len[0], byte_len[1],
                     0, 0, Command.CHK, Command.TAIL]
@@ -409,6 +395,11 @@ class FingerPrintReader:
         return res
 
     def up_comp_many(self, eigenval):
+        """
+        Module get fingerprint eigenvalue and compare finger exist
+        :param eigenval: binary
+        :return: Response val User
+        """
         byte_len = len(eigenval).to_bytes(2, 'big')
         header = [Command.HEAD, Command.DOWN_COMP_MANY, byte_len[0], byte_len[1],
                       0, 0, Command.CHK, Command.TAIL]
@@ -426,6 +417,11 @@ class FingerPrintReader:
         return res
 
     def download_user_eigenvalue(self, user_id):
+        """
+        Client get user eigenvalue by user_id
+        :param user_id: number
+        :return: Response val binary
+        """
         id_high, id_low = text_to_byte(user_id)
         cmd = [Command.HEAD, Command.UP_ONE_DB, id_high, id_low,
                0, 0, Command.CHK, Command.TAIL]
@@ -435,6 +431,13 @@ class FingerPrintReader:
         return res
 
     def add_fingerprint_by_data(self, user_id, user_pri, eigenvalue):
+        """
+        Module get eigen value and save the fingerprint by user id and privilege
+        :param user_id: number
+        :param user_pri: number or Privilege
+        :param eigenvalue: binary data
+        :return: Response val User
+        """
         id_high, id_low = text_to_byte(user_id)
         high_len, low_len = int.to_bytes(len(eigenvalue), 2, 'big')
         cmd_header = [Command.HEAD, Command.DOWN_ONE_DB, high_len, low_len,
@@ -449,6 +452,10 @@ class FingerPrintReader:
         return res
 
     def get_all_user_info(self):
+        """
+        Registered all user information
+        :return: Response of User List
+        """
         cmd_buf = [Command.HEAD, Command.ALL_USR, 0, 0,
                    0, 0, Command.CHK, Command.TAIL]
         res = self.send_command_response(cmd_buf)
