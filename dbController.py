@@ -4,10 +4,11 @@ import datetime
 
 class DBController:
     def __init__(self, db_file):
-        self.conn = sqlite3.connect(db_file)
+        self.conn = sqlite3.connect(db_file, isolation_level=None)
         self.cur = self.conn.cursor()
 
     def __del__(self):
+        self.cur.close()
         self.conn.close()
 
     def set_up(self):
@@ -35,8 +36,7 @@ class DBController:
 
     def add_finger(self, user_name):
         new_id = self.highest_fpid() + 1
-        self.conn.execute(
-            'INSERT INTO fingerprints(fpid, username) VALUES(?, ?);',
+        self.conn.execute('INSERT INTO fingerprints(fpid, username) VALUES(?, ?);',
             (new_id, user_name))
         return new_id
 
@@ -44,7 +44,10 @@ class DBController:
         cur = self.cur
         cur.execute('SELECT username FROM fingerprints WHERE fpid = ?;', (fpid,))
         result = cur.fetchone()
-        return result[0]
+        if result:
+            return result[0]
+        else:
+            return 'Nobody'
 
     def get_fingers(self, username=None):
         cur = self.cur
@@ -63,8 +66,7 @@ class DBController:
 
     def record(self, username):
         now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return self.conn.execute(
-            'INSERT INTO workrecord(username, datetime) values (?, ?);', (username, now)).rowcount
+        return self.conn.execute('INSERT INTO workrecord(username, datetime) values (?, ?);', (username, now)).rowcount
 
     def get_workrecord(self, date=None, username=None):
         cur = self.cur
@@ -75,8 +77,7 @@ class DBController:
             cur.execute('SELECT datetime, username FROM workrecord WHERE datetime like "%?%" '
                         'ORDER BY datetime;', (date,))
         elif username:
-            cur.execute('SELECT datetime, username FROM workrecord WHERE username = ? ORDER BY datetime;'
-                        .format(username))
+            cur.execute('SELECT datetime, username FROM workrecord WHERE username = ? ORDER BY datetime;', (username,))
         else:
             cur.execute('SELECT datetime, username FROM workrecord ORDER BY datetime')
         result = cur.fetchall()
@@ -93,7 +94,7 @@ def test():
     assert con.highest_fpid() == 1 and len(con.get_fingers()) == 1, 'db add one finger'
     assert con.get_fingers('sun woo')[0][1] == 'kim sun woo', 'should query correct'
     assert con.find_finger(1) == 'kim sun woo', 'find username by fingerprint id'
-    print (con.find_finger(1))
+    print(con.find_finger(1))
     assert con.record('kim sun woo') == 1, 'attendance'
     print(con.get_workrecord())
     assert con.del_by_id(1) == 1, 'delete id result be 1'

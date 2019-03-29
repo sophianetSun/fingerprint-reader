@@ -110,3 +110,9 @@ venv.bak/
 
 # VSCode
 .vscode
+fingerprint-reader.pyproj
+/.vs
+/fingerprint-reader1.pyproj
+/fingerprint-reader1.sln
+*.sln
+/lawdeck.db-journal

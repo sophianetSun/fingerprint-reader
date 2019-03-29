@@ -109,7 +109,6 @@ class FingerPrintReader:
         self.ser.flushInput()
         self.ser.write(cmd)
         rx_buf = self.read_reader(8, 1)
-        print(rx_buf)
 
         if self.ser.in_waiting > 0 and Ack(rx_buf[4]) == Ack.SUCCESS:
             data_len = int.from_bytes(rx_buf[2:4], 'big')
