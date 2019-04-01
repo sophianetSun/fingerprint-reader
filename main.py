@@ -75,6 +75,15 @@ def delete_user(user_name):
         print(res)
 
 
+def initialize():
+	if dbcon.highest_fpid() > 0:
+		dbcon.del_all_fingers()
+		fpr.clear_all_users()
+		print('All data clear')
+	else:
+		print('Check Manually')
+
+
 if __name__ == '__main__':
     try:
         main()

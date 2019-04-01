@@ -64,6 +64,9 @@ class DBController:
     def del_by_user(self, username):
         return self.conn.execute('DELETE FROM fingerprints WHERE username = ?;', (username,)).rowcount
 
+    def del_all_fingers(self):
+        return self.conn.execute('DELETE FROM fingerprints;')
+
     def record(self, username):
         now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         return self.conn.execute('INSERT INTO workrecord(username, datetime) values (?, ?);', (username, now)).rowcount
