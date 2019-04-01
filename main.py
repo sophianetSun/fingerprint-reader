@@ -15,13 +15,12 @@ company = os.environ.get('company')
 url = os.environ.get('fingerurl')
 
 def main():
-	rlck = threading.RLock()
 	while True:
 		show_input_command()
 
 
 def show_input_command():
-	print('1: add, 2: verify, 3:delete')
+	print('0: auto verify, 1: add, 2: verify, 3:delete')
 	in_cmd = input('input command you want: ')
 	in_cmd = int(in_cmd)
 	if in_cmd == 1:
@@ -32,13 +31,9 @@ def show_input_command():
 	elif in_cmd == 3:
 		user_name = input('type username: ')
 		delete_user(user_name)
-
-
-def auto_verify_finger(lck, result):
-    while True:
-        if lck.acquire() == True:
-            pass
-    lck.release()
+	elif in_cmd == 0:
+		while True:
+			verify_finger()
 
 
 def add_finger(user_name, privilege=2):
@@ -76,12 +71,12 @@ def delete_user(user_name):
 
 
 def initialize():
-	if dbcon.highest_fpid() > 0:
+	if len(dbcon.get_fingers()) != fpr.get_user_count():
 		dbcon.del_all_fingers()
 		fpr.clear_all_users()
 		print('All data clear')
 	else:
-		print('Check Manually')
+		print('Nothing happen')
 
 
 if __name__ == '__main__':
