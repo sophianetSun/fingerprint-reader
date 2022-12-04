@@ -1,18 +1,12 @@
 from fingerprint import FingerPrintReader, Privilege, Ack
 from dbController import DBController
-import threading
-import requests
-import json
 import sys
-import os
 
 sysDriver = {'win32': 'COM3', 'darwin':'/dev/cu.SLAB_USBtoUART', 'linux':'/dev/ttyUSB0'}
 port = sysDriver[sys.platform]
 fpr = FingerPrintReader(port, 19200)
-dbcon = DBController('lawdeck.db')
+dbcon = DBController('sample.db')
 dbcon.set_up()
-company = os.environ.get('company')
-url = os.environ.get('fingerurl')
 
 def main():
 	while True:
@@ -48,18 +42,10 @@ def verify_finger():
 		user = res.val
 		user_name = dbcon.find_finger(user.id)
 		dbcon.record(user_name)
-		t1 = threading.Thread(target=send_web_data, args=(user_name,), daemon=True)
-		t1.start()
 		print(res)
 	else:
 		print(res)
 
-
-def send_web_data(user_name):
-    data = {'company': company, 'username': user_name}
-    res = requests.post(url, data=data)
-    res.raise_for_status()
-    print(res.json())
 
 
 def delete_user(user_name):
@@ -84,4 +70,4 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print('\n\n Finished! \n')
-        #sys.exit()
+        sys.exit()
